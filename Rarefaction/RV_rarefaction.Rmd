@@ -83,3 +83,16 @@ ggiNEXT(outC, type=3)
 
 ```
 
+```{r richness estimation using Chao1 index, echo=TRUE}
+#per month for RV-A
+ChaoRichness(tryRVA[,c("X2021.02","X2021.04", "X2021.05", "X2021.06", "X2021.07", "X2022.11", "X2022.12")], conf=0.99)
+
+#per month for RV-B
+ChaoRichness(tryRVB[,c("X2021.02","X2021.04", "X2021.05", "X2021.06", "X2021.07", "X2022.11", "X2022.12")], conf=0.99)
+
+#per month for RV-C
+ChaoRichness(tryRVC[,c("X2021.02","X2021.04", "X2021.05", "X2021.06", "X2021.07", "X2022.11", "X2022.12")], conf=0.99)
+
+```
+
+
