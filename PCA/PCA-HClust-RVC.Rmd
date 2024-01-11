@@ -29,7 +29,7 @@ RVCmetadf$sex <- as.factor(RVCmetadf$sex)
 RVCmetadf$COLLECTION <- as.factor(RVCmetadf$COLL_MONTH)
 RVCmetadf$Conclusion <- as.factor(RVCmetadf$Conclusion)
 RVCmetadf$age <- as.numeric(RVCmetadf$age)
-
+RVCmetadf$Ct <- as.numeric(RVCmetadf$Ct)
 ```
 
 Calculate the eigenvalues and principal component analysis: 
@@ -118,9 +118,10 @@ ggplot(RVC_cluster, aes(x=sex, fill=y)) + geom_bar(position = "fill")
 
 X4 = pairwiseNominalIndependence(as.matrix(table(RVC_cluster$AgeGroup, RVC_cluster$y)), compare = "column", fisher = FALSE, chisq = FALSE, method = "bonferroni", digits = 3) 
 cldList(p.adj.Gtest ~ Comparison, data= X4, threshold  = 0.05)
-ggplot(RVC_cluster, aes(x=AgeGroup, fill=y)) + geom_bar(position = "fill") + scale_x_discrete(limits = c("less5", "5-17", "18-64", "more65"))
+ggplot(RVC_cluster, aes(x=AgeGroup, fill=y)) + geom_bar(position = "fill") + scale_x_discrete(limits = c("less5", "5-17", "18-65", "more65"))
 
-#Further analysis with age as continuous variable:
+#Further analysis with continuous variable age and Ct:
+#AGE
 res.kruskal <- RVC_cluster %>% kruskal_test(age ~ y) #Kruskal-Wallis Test
 res.kruskal
 #Wilcoxon’s test to calculate pairwise comparisons between group:
@@ -135,6 +136,22 @@ ggboxplot(RVC_cluster, x = "y", y = "age") +
   labs(
     subtitle = get_test_label(res.kruskal, detailed = TRUE),
     caption = get_pwc_label(pwc)
+    )
+#Ct
+res2.kruskal <- RVC_cluster %>% kruskal_test(Ct ~ y) #Kruskal-Wallis Test
+res2.kruskal
+#Wilcoxon’s test to calculate pairwise comparisons between group:
+pwc2 <- RVC_cluster %>% 
+  wilcox_test(Ct ~ y, p.adjust.method = "bonferroni") 
+pwc2
+
+#visualization: box plots with p-values:
+pwc2 <- pwc2 %>% add_xy_position(x = "y")
+ggboxplot(RVC_cluster, x = "y", y = "Ct") +
+  stat_pvalue_manual(pwc2, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(res2.kruskal, detailed = TRUE),
+    caption = get_pwc_label(pwc2)
     )
 
 ```
