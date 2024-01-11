@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=TRUE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 library(ggplot2)
 library(phytools)
 library(ape)
@@ -105,7 +105,7 @@ avPlots(lm1)
 #identify the formula:
 summ(lm1, confint=TRUE, digits=3) #in this case the formula is: Ct= 27.892 + 0.018 x age - 2.715 x symptomatic (0=asymptomatic, 1=symptomatic: categorical variables are choose as baseline depending on alphabetical order)
 #plot
-interact_plot(lm1, pred=Age, modx=Symptoms, plot.points=TRUE, point.alpha=0.2, interval = TRUE, int.type = "confidence", int.width = .8)
+interact_plot(lm1, pred=Age, modx=Symptoms, plot.points=TRUE, point.alpha=0.2, interval = TRUE, int.type = "confidence", int.width = .95)
 
 #verify normality of residuals
 qqnorm(lm1$residuals)
@@ -265,7 +265,11 @@ res.gen.ct.kruskal
 res.gen.ct.effsize <- season_data_RV %>% kruskal_effsize(Ct ~ Genotype)
 res.gen.ct.effsize #(0.01- < 0.06 (small effect), 0.06 - < 0.14 (moderate effect) and >= 0.14 (large effect))
 
-ggboxplot(season_data_RV_CT.5, x = "Genotype", y = "Ct") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#All genotypes versus Ct value
+ggboxplot(season_data_RV, x = "Genotype", y = "Ct") + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+
+#Genotypes with more than 5 cases detected, versus Ct value
+ggboxplot(season_data_RV_CT.5, x = "Genotype", y = "Ct") + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
 
 ```
 
