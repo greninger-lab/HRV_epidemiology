@@ -1,0 +1,137 @@
+---
+title: "RVB_PCA_analysis"
+author: "Stephanie Goya"
+date: "2024-06-21"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Upload the dataframes and alignment (in FASTA) to calculate the pairwise genetic distance matrix:
+
+```{r dataframes, echo=TRUE}
+library("ape") #pairwise distance from DNA sequences
+library("seqinr") #read alignment 
+library("FactoMineR") #Principal Component Analysis (PCA)
+library("factoextra") #Distance Matrix Computation and Visualization
+library("corrplot")
+
+RVBdistdf <- read.csv("GeneticDistanceMatrix_RV-B_20240621.csv", row.names=1) #the pairwise genetic distance dataframe
+RVBmetadf <-read.csv("RVB-PCA_metadata_20240621.csv", row.names=1) #the metadata associated to sequences/individuals
+RVBmetadf[RVBmetadf ==''] <- NA
+RVBmetadf$AgeGroup <- as.factor(RVBmetadf$AgeGroup)
+RVBmetadf$Genotype <- as.factor(RVBmetadf$Genotype)
+RVBmetadf$ZipCode <- as.factor(RVBmetadf$ZipCode)
+RVBmetadf$Sex <- as.factor(RVBmetadf$Sex)
+RVBmetadf$COLLECTION <- as.factor(substr(RVBmetadf$CollectionDate, 1, 7))
+RVBmetadf$Clinica <- as.factor(RVBmetadf$Symptoms)
+RVBmetadf$Age <- as.numeric(RVBmetadf$Age)
+RVBmetadf$RV_Ct_value <- as.numeric(RVBmetadf$RV_Ct_value)
+```
+
+Calculate the eigenvalues and principal component analysis:
+
+```{r PCA calculation, echo=TRUE}
+#PCA analysis
+res.RVB <- PCA(RVBdistdf, scale.unit = TRUE, ncp = 6)
+eig.val <- get_eigenvalue(res.RVB)
+
+#To evaluate the number of Principal Components we can see the Scree Plot, which is the plot of the eigenvalues ordered from largest to the smallest.
+fviz_eig(res.RVB, addlabels = TRUE, ylim = c(0, 50))
+```
+
+Analysis of quality and contribution of individuals:
+
+```{r plot of individuals, echo=TRUE}
+fviz_pca_ind(res.RVB, col.ind = "cos2", pointsize = "cos2", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), labelsize=2)
+
+#To visualize the contribution of individuals to the first two principal components:
+fviz_contrib(res.RVB, choice = "ind", axes = 1:2, labelsize=2) + theme(text = element_text(size=7))
+```
+
+Constructing a dendrogram and making the hierarchical clustering:
+
+```{r Hierarchical Clustering, echo=TRUE}
+library("dendextend") #cut tree into groups
+library("svglite") #save plots
+RVBdm<-dist(RVBdistdf, method = 'euclidean') 
+RVBhc<-hclust(RVBdm, method="complete") # simple dendrogram
+
+#evaluating the number of clusters such that the total intra-cluster variation (total within-cluster sum of square, WSS) is minimized:
+fviz_nbclust(RVBdistdf, FUNcluster=hcut, method="wss") + geom_vline(xintercept = 4, linetype = 2)
+
+cut_cmp <- cutree(RVBhc, k = 4) #applying the clustering by wss
+plot(RVBhc, hang=-1, cex=0.2) 
+#plot with cluster rectangles within the clusters:
+rect.hclust(RVBhc, k=4, border=2:4)
+
+#save plot of dendrogram:
+#svglite(filename = "RVB_HC_PCA_euclidean_TEST.svg")
+#plot(RVBhc, hang=-1, cex=0.2) 
+#rect.hclust(RVBhc, k=4, border=2:4) #to see the clusters identified by a rectangle
+#dev.off()
+```
+
+Evaluate the association of metadata with the clusters by hierarchical clustering:
+
+```{r anaysis of hierarchical clustering associated with metadata, echo=TRUE}
+#make a dataframe with the clusters and evaluating association with metadata using G test of independence between groups:
+library("dplyr")
+library("tidyverse")
+library("ggpubr") #boxplot with points
+library("rstatix") #kruskal adn wilcox tests
+library("rcompanion") #Pairwise tests of independence
+library("AMR") #G-test
+RVB_cluster_pre <- merge(RVBmetadf, cut_cmp, by = 0)
+RVB_cluster_pre$y<-as.factor(RVB_cluster_pre$y)
+RVB_cluster <- RVB_cluster_pre[!is.na(RVB_cluster_pre$Age),]
+RVB_cluster_clinica <- RVB_cluster[!is.na(RVB_cluster$Clinica),]
+RVB_cluster_zipcode <- RVB_cluster[!is.na(RVB_cluster$ZipCode),]
+RVB_cluster_sex <- RVB_cluster[!is.na(RVB_cluster$Sex),]
+
+g.test(RVB_cluster_clinica$Clinica, RVB_cluster_clinica$y)
+X1 = pairwiseNominalIndependence(as.matrix(table(RVB_cluster_clinica$Clinica, RVB_cluster_clinica$y)), compare = "column", fisher = FALSE, chisq = FALSE, method = "bonferroni", digits = 3)
+cldList(p.adj.Gtest ~ Comparison, data= X1, threshold  = 0.05)
+ggplot(RVB_cluster_clinica, aes(x=Clinica, fill=y)) + geom_bar(position = "fill")
+
+g.test(RVB_cluster_zipcode$ZipCode, RVB_cluster_zipcode$y)
+X2 = pairwiseNominalIndependence(as.matrix(table(RVB_cluster_zipcode$ZipCode, RVB_cluster_zipcode$y)), compare = "column", fisher = FALSE, chisq = FALSE, method = "bonferroni", digits = 3)
+cldList(p.adj.Gtest ~ Comparison, data= X2, threshold  = 0.05)
+ggplot(RVB_cluster_zipcode, aes(x=ZipCode, fill=y)) + geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+X3 = pairwiseNominalIndependence(as.matrix(table(RVB_cluster_sex$Sex, RVB_cluster_sex$y)), compare = "column", fisher = FALSE, chisq = FALSE, method = "bonferroni", digits = 3)
+cldList(p.adj.Gtest ~ Comparison, data= X3, threshold  = 0.05)
+ggplot(RVB_cluster_sex, aes(x=Sex, fill=y)) + geom_bar(position = "fill")
+
+X4 = pairwiseNominalIndependence(as.matrix(table(RVB_cluster$AgeGroup, RVB_cluster$y)), compare = "column", fisher = FALSE, chisq = FALSE, method = "bonferroni", digits = 3) 
+cldList(p.adj.Gtest ~ Comparison, data= X4, threshold  = 0.05)
+ggplot(RVB_cluster, aes(x=AgeGroup, fill=y)) + geom_bar(position = "fill") + scale_x_discrete(limits = c("<5y", "5-18y", "19-65y", ">65y"))
+
+RVB_cluster_pre$Year <- as.factor(substr(RVB_cluster_pre$CollectionDate, 1, 4))
+X5 = pairwiseNominalIndependence(as.matrix(table(RVB_cluster_pre$Year, RVB_cluster_pre$y)), compare = "column", fisher = FALSE, chisq = FALSE, method = "bonferroni", digits = 3)
+cldList(p.adj.Gtest ~ Comparison, data= X5, threshold  = 0.05)
+ggplot(RVB_cluster_pre, aes(x=Year, fill=y)) + geom_bar(position = "fill")
+
+
+#Further analysis with continuous variables Age and Ct:
+#Age
+res.kruskal <- RVB_cluster %>% kruskal_test(Age ~ y) #Kruskal-Wallis Test
+res.kruskal
+#Wilcoxon’s test to calculate pairwise comparisons between group:
+pwc <- RVB_cluster %>% 
+  wilcox_test(Age ~ y, p.adjust.method = "bonferroni") 
+pwc
+
+#visualization: box plots with p-values:
+pwc <- pwc %>% add_xy_position(x = "y")
+ggboxplot(RVB_cluster, x = "y", y = "Age") +
+  stat_pvalue_manual(pwc, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(res.kruskal, detailed = TRUE),
+    caption = get_pwc_label(pwc)
+    )
+```
