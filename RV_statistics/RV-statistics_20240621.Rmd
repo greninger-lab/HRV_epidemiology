@@ -1,0 +1,337 @@
+---
+title: "Plots-RV-Statistics"
+author: "Stephanie Goya"
+date: "2024-06-21"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(phytools)
+library(ape)
+library(readr)
+library(svglite)
+library(plyr)
+library(RColorBrewer)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(AMR) #g.test
+library(car)#multivatiate regression model
+library(jtools)#multivatiate regression model
+library(interactions)#multivatiate regression model
+library(tidyverse)#logistic regression
+library(caret)#logistic regression
+library(cowplot)
+library(epitools) #odd ratio
+library(DescTools) #(corrected) contintency coefficient ContCoef
+library(sjPlot) #plot glm model
+```
+
+Association of RT-qPCR RV Ct value with symptoms, age and sex of the individuals:
+```{r PCR data analysis: Ct value and symptomatology/age_group, echo=TRUE}
+PCR_data_RV <- read_csv("PCR_Ct_symp_age_20240621.csv") 
+PCR_data_RV$CollectionMonth <- as.factor(substr(PCR_data_RV$CollectionDate,1,7))
+PCR_data_RV$Sex <- as.factor(PCR_data_RV$Sex)
+PCR_data_RV$Symptoms <- as.factor(PCR_data_RV$Symptoms)
+PCR_data_RV$AgeGroup <- as.factor(PCR_data_RV$AgeGroup)
+PCR_data_RV$Age <- as.numeric(PCR_data_RV$Age)
+PCR_data_RV$RV_Ct_value <- as.numeric(PCR_data_RV$RV_Ct_value)
+
+#analysis Ct versus age:
+PCR_data_RV %>% group_by(AgeGroup) %>% get_summary_stats(RV_Ct_value, type="mean_sd")
+#plotting Ct vs age groups
+ordered_age_groups  = factor(PCR_data_RV$AgeGroup, levels=c("<5y", "5-18y", "19-65y", ">65y"))
+A1 <- ggplot(data = PCR_data_RV, mapping = aes(x=ordered_age_groups, y=RV_Ct_value, fill=ordered_age_groups)) + geom_violin() + geom_boxplot(width=.1, color="white") + geom_jitter(color="black", size=0.2, alpha=0.9) + guides(fill = FALSE) + theme_minimal() + ylab("Ct value") + xlab("Age groups")
+
+#Kruskal test Ct vs age:
+res.age.kruskal <- kruskal_test(PCR_data_RV, RV_Ct_value ~ AgeGroup)
+res.age.kruskal
+#calculate effect size
+res.age.effsize <- PCR_data_RV %>% kruskal_effsize(RV_Ct_value ~ AgeGroup)
+res.age.effsize #(0.01- < 0.06 (small effect), 0.06 - < 0.14 (moderate effect) and >= 0.14 (large effect))
+
+#Wilcoxon’s test - pairwise comparisons between group:
+pwc.Ct.age <- ungroup(PCR_data_RV) %>% wilcox_test(RV_Ct_value ~ AgeGroup, p.adjust.method = "bonferroni") 
+pwc.Ct.age
+#plotting results:
+pwc.Ct.age <- pwc.Ct.age %>% add_xy_position(x = "AgeGroup")
+ggboxplot(PCR_data_RV, x = "AgeGroup", y = "RV_Ct_value") +
+    stat_pvalue_manual(pwc.Ct.age, hide.ns = TRUE) +
+    labs(
+        subtitle = get_test_label(res.age.kruskal, detailed = TRUE),
+        caption = get_pwc_label(pwc.Ct.age)
+        )
+
+#analysis Ct versus symptomatic:
+#summary of the dataframe:
+PCR_data_RV.NA <- na.omit(PCR_data_RV)
+PCR_data_RV.NA$Symptoms <- factor(PCR_data_RV.NA$Symptoms, levels=c("Symptomatic", "Asymptomatic"))
+
+B1 <- ggplot(data = PCR_data_RV.NA, mapping = aes(x=Symptoms, y=RV_Ct_value, fill=Symptoms)) + geom_violin() + geom_boxplot(width=.1, color="white") + geom_jitter(color="black", size=0.2, alpha=0.9) + guides(fill = FALSE) + theme_minimal() + theme(axis.title.x=element_blank()) + ylab("Ct value")
+
+#Kruskal test
+res.sym.kruskal <- kruskal_test(PCR_data_RV.NA, RV_Ct_value ~ Symptoms)
+res.sym.kruskal
+#calculate effect size
+res.sym.effsize <- PCR_data_RV.NA %>% kruskal_effsize(RV_Ct_value ~ Symptoms)
+res.sym.effsize #(0.01- < 0.06 (small effect), 0.06 - < 0.14 (moderate effect) and >= 0.14 (large effect))
+
+#Wilcoxon’s test to calculate pairwise comparisons between group levels with corrections for multiple testing:
+pwc.ct <- PCR_data_RV.NA %>% 
+  wilcox_test(RV_Ct_value ~ Symptoms, p.adjust.method = "bonferroni") 
+pwc.ct
+
+#visualization: box plots with p-values:
+pwc.ct <- pwc.ct %>% add_xy_position(x = "Symptoms")
+ggboxplot(PCR_data_RV.NA, x = "Symptoms", y = "RV_Ct_value") +
+  stat_pvalue_manual(pwc.ct, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(res.sym.kruskal, detailed = TRUE),
+    caption = get_pwc_label(pwc.ct)
+    )
+
+#Age versus symptoms
+PCR_data_RV.NA %>% group_by(Symptoms) %>%
+          get_summary_stats(Age, type="mean_sd")
+ggboxplot(PCR_data_RV.NA, x="Symptoms", y="Age")
+C1 <-ggplot(data = PCR_data_RV.NA, mapping = aes(x=Symptoms, y=Age, fill=Symptoms)) + geom_violin() + geom_boxplot(width=.1, color="white") + geom_jitter(color="black", size=0.2, alpha=0.9) + guides(fill = FALSE) + theme_minimal() + theme(axis.title.x=element_blank()) + ylab("Age")
+kruskal_test(PCR_data_RV.NA, Age ~ Symptoms)
+
+#Age groups versus symptoms:
+chisq.test(table(PCR_data_RV.NA$AgeGroup, PCR_data_RV.NA$Symptoms))
+ggplot(PCR_data_RV.NA, aes(x=AgeGroup, fill=Symptoms)) + geom_bar(position = "fill")
+ContCoef(table(PCR_data_RV.NA$AgeGroup, PCR_data_RV.NA$Symptoms), correct = TRUE) #contingency coefficient strength of associations: <.10 = weak, .11 – .30 = moderate, >.31 = strong
+
+#Kruskal test
+res.ageSYM.kruskal <- kruskal_test(PCR_data_RV.NA, Age ~ Symptoms)
+res.ageSYM.kruskal
+
+##model logistic regression of symptoms, Ct value and age groups (based on https://statsandr.com/blog/binary-logistic-regression-in-r/#multivariable-binary-logistic-regression)
+model <- glm(Symptoms ~ RV_Ct_value + AgeGroup, data=PCR_data_RV.NA, family=binomial)
+summary(model)
+#making reduced model since not all categories of AgeGroup were statistically supported
+model_reduced <- glm(Symptoms ~ RV_Ct_value , data=PCR_data_RV.NA, family=binomial)
+#comparing reduced and complete model with likelihood ratio test
+anova(model_reduced, model,test = "LRT") #the complete model resulted better, "AgeGroup" is significantly associated with Symptoms
+
+#interpret relationships with odd ratio
+round(exp(cbind(OR = coef(model), confint(model))), 2)
+
+#taking the built model and test it on the initial data frame
+# create a vector of predicted probabilities
+preds <- predict(model,
+  newdata = select(PCR_data_RV.NA, -Symptoms), # removing the outcomes
+  type = "response")
+#if probability < threshold, patient is considered not to have the disease
+preds_outcome <- ifelse(preds < 0.5, 0, 1)
+# transform predictions into factor and set labels
+preds_outcome <- factor(preds_outcome, levels = c(0, 1), labels = c("symptomatic", "asymptomatic"))
+# compare observed vs. predicted outcome
+tab <- table(PCR_data_RV.NA$Symptoms, preds_outcome,dnn = c("observed", "predicted"))
+tab
+#accuracy of the built model (well predicted versus total predictions)
+accuracy <- sum(diag(tab)) / sum(tab)
+accuracy
+#sensitivity (true positive rate) of the built model
+sensitivity <- tab[2, 2] / (tab[2, 2] + tab[2, 1])
+sensitivity
+#specificity (true negative rate) of the built model
+specificity <- tab[1, 1] / (tab[1, 1] + tab[1, 2])
+specificity
+
+D1 <-plot_model(model, type = "pred",terms = c("RV_Ct_value [all]", "AgeGroup")) + labs(y = "Prob(Asymptomatic)")
+D1 #Asymptomatic is listed first (than Symptomatic) in R due to alphabetical order, thus the model probability was based on Asymptomatic state
+
+#save multipanel plot:
+#plot_grid(A1, B1, C1, D1, labels = c('A', 'B', 'C', 'D'), align = "h")
+
+```
+
+
+
+RV seasonality plots with the Washington State genomes:
+```{r RV seasonality, echo=TRUE}
+#Loading the dataframe:
+season_data_RV <- read_csv("RV-dataframe_20240621.csv") 
+season_data_RV$CollectionMonth<- as.factor(substr(season_data_RV$CollectionDate,1,7))
+season_data_RV$Genotype <- as.factor(season_data_RV$Genotype)
+season_data_RV$Sex <- as.factor(season_data_RV$Sex)
+season_data_RV$RVSpecie <- as.factor(season_data_RV$RVSpecie)
+season_data_RV$Symptoms <- as.factor(season_data_RV$Symptoms)
+season_data_RV$StudyPeriod <- as.factor(season_data_RV$StudyPeriod)
+season_data_RV$AgeGroup <- as.factor(season_data_RV$AgeGroup)
+season_data_RV$Age <- as.numeric(season_data_RV$Age)
+season_data_RV$RV_Ct_value <- as.numeric(season_data_RV$RV_Ct_value)
+season_data_RV$ZipCode <- as.factor(season_data_RV$ZipCode)
+
+# ----->Bubble chart of seasonality of RV genotypes of all the species together. It is needed an Excel file containing a column for the sequence name and a column for the genotype:
+condensed_season_data_RV <- ddply(season_data_RV,.(Genotype,CollectionMonth),nrow)
+
+ggplot(condensed_season_data_RV, aes(x= factor(CollectionMonth), y=Genotype, size=V1)) + geom_point(alpha=0.5) + scale_y_discrete(limits=rev(c("A1B", "A2", "A7", "A9", "A11", "A12", "A13", "A16", "A18", "A20", "A21", "A22", "A23", "A24", "A25", "A28", "A29", "A30", "A31", "A32", "A33", "A34", "A38", "A39", "A45", "A46", "A47", "A49", "A53", "A54", "A58", "A59", "A60", "A61", "A62", "A63", "A64", "A66", "A67", "A68", "A73", "A78", "A80", "A85", "A94", "A101", "A105", "A111", "B3", "B4", "B6", "B14", "B27", "B42", "B48", "B70", "B72", "B83", "B91", "B92", "B100", "B101", "B107", "C1", "C2", "C3", "C4", "C6", "C7", "C8", "C9", "C11", "C13", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C23", "C25", "C26", "C27", "C28", "C29", "C31", "C33", "C34", "C35", "C36", "C40", "C42", "C43", "C44", "C46", "C53", "C55", "C56"))) + xlab("Collection Date") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# ----->Barplot of the seasonality of RV species by month of sample collection. 
+n <- length(unique(season_data_RV$RVSpecie))
+qual_col_pals = brewer.pal.info[brewer.pal.info$category== 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+A2 <- ggplot(season_data_RV, aes(x=CollectionMonth, fill=RVSpecie)) + geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x=element_blank()) + labs(y="Proportion", fill = "Species") + scale_fill_manual(values = sample(col_vector, n))
+A2
+
+# ----->Barplot of the seasonality of RV-A genotypes by month of sample collection. 
+season_data_RVA <- subset(season_data_RV, season_data_RV$RVSpecie=="A")
+nA <- length(unique(season_data_RVA$Genotype))
+qual_col_pals = brewer.pal.info[brewer.pal.info$category== 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+B2 <- ggplot(season_data_RVA, aes(x=CollectionMonth, fill=Genotype)) + geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x=element_blank()) + labs(y="Proportion", fill = "RV-A Genotype") + scale_fill_manual(values = sample(col_vector, nA), breaks = c("A1B", "A2", "A7", "A9", "A11", "A12", "A13", "A16", "A18", "A20", "A21", "A22", "A23", "A24", "A25", "A28", "A29", "A30", "A31", "A32", "A33", "A34", "A38", "A39", "A45", "A46", "A47", "A49", "A53", "A54", "A58", "A59", "A60", "A61", "A62", "A63", "A64", "A66", "A67", "A68", "A73", "A78", "A80", "A85", "A94", "A101", "A105", "A111"))
+B2
+
+
+# ----->Barplot of the seasonality of RV-B genotypes by month of sample collection. 
+season_data_RVB <- subset(season_data_RV, season_data_RV$RVSpecie=="B")
+nB <- length(unique(season_data_RVB$Genotype))
+qual_col_pals = brewer.pal.info[brewer.pal.info$category== 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+C2 <- ggplot(season_data_RVB, aes(x=CollectionMonth, fill=Genotype)) + geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x=element_blank()) + labs(y="Proportion", fill = "RV-B Genotype") + scale_fill_manual(values = sample(col_vector, nB), breaks = c("B3", "B4", "B6", "B14", "B27", "B42", "B48", "B70", "B72", "B83", "B91", "B92", "B100", "B101", "B107"))
+C2
+
+# ----->Barplot of the seasonality of RV-C genotypes by month of sample collection. 
+season_data_RVC <- subset(season_data_RV, season_data_RV$RVSpecie=="C")
+nC <- length(unique(season_data_RVC$Genotype))
+qual_col_pals = brewer.pal.info[brewer.pal.info$category== 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+D2 <- ggplot(season_data_RVC, aes(x=CollectionMonth, fill=Genotype)) + geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x=element_blank()) + labs(y="Proportion", fill = "RV-C Genotype") + scale_fill_manual(values = sample(col_vector, nC), breaks = c("C1", "C2", "C3", "C4", "C6", "C7", "C8", "C9", "C11", "C13", "C15", "C16", "C17", "C18", "C19", "C20", "C21", "C23", "C25", "C26", "C27", "C28", "C29", "C31", "C33", "C34", "C35", "C36", "C40", "C42", "C43", "C44", "C46", "C53", "C55", "C56")) 
+D2
+
+```
+
+Association of RV species and genotypes with clinical and demographic characteristics:
+```{r, plots to evaluate the associacion of RV with clinical and demographic charactersitics, echo=TRUE}
+#**RV species versus individuals' age**
+ggplot(season_data_RV, aes(x=RVSpecie, y=Age, fill=RVSpecie)) + geom_violin(width=1) + geom_boxplot(width=0.1, color="white", alpha=0.2) + geom_jitter(color="black", size=0.4, alpha=0.9) + theme_minimal()
+
+#**Age Group and Sex by RV species**
+df_clinica_pre <- season_data_RV[!is.na(season_data_RV$Age),]
+df_clinica <- df_clinica_pre[!is.na(df_clinica_pre$Sex),]
+ggplot(df_clinica, aes(x=RVSpecie, fill=AgeGroup)) + geom_bar(position = "dodge") 
+ggplot(df_clinica, aes(x=AgeGroup, fill=RVSpecie)) + geom_bar(position = "fill") + scale_x_discrete(limits = c("<5y", "5-18y", "19-65y", ">65y"))
+ggplot(df_clinica, aes(x=RVSpecie, fill=Sex)) + geom_bar(position = "dodge")
+#statistical test
+  df_clinica_Sex.spe <- as.matrix(table(df_clinica$RVSpecie, df_clinica$Sex))  
+  g.test(df_clinica_Sex.spe)
+  df_clinica_age.spe <- as.matrix(table(df_clinica$RVSpecie, df_clinica$AgeGroup))  
+  g.test(df_clinica_age.spe)
+
+fisher.test(df_clinica$RVSpecie, df_clinica$AgeGroup,simulate.p.value = TRUE)
+#pairwise comparison in <5years old
+AB_less5 <-matrix(c(58, 9, 11+225+169,7+53+36),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "B"), AgeGroup = c("less5", "above5"))) #RV-A vs RV-B
+oddsratio.fisher(AB_less5)
+
+AC_less5 <- matrix(c(58,56,11+225+169,13+97+54),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "C"), AgeGroup = c("less5", "above5"))) #RV-A vs RV-C
+oddsratio.fisher(AC_less5)
+
+BC_less5 <- matrix(c(9,56,7+53+36,13+97+54),nrow = 2, ncol = 2, dimnames=list(RV= c("B", "C"), AgeGroup = c("less5", "above5"))) #RV-B vs RV-C
+oddsratio.fisher(BC_less5)
+
+#pairwise comparison in 5-18 years old
+AB_518 <-matrix(c(169,36,58+11+225,9+7+53),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "B"), AgeGroup = c("5-18", "no5-18"))) #RV-A vs RV-B
+oddsratio.fisher(AB_518)
+
+AC_518 <- matrix(c(169,54,58+11+225,56+13+97),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "C"), AgeGroup = c("5-18", "no5-18"))) #RV-A vs RV-C
+oddsratio.fisher(AC_518)
+
+BC_518 <- matrix(c(36,54,9+7+53,56+13+97),nrow = 2, ncol = 2, dimnames=list(RV= c("B", "C"), AgeGroup = c("5-18", "no5-18"))) #RV-B vs RV-C
+oddsratio.fisher(BC_518)
+
+#pairwise comparison in 19-65 years old
+AB_1965 <-matrix(c(225,53,58+11+169,9+7+36),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "B"), AgeGroup = c("18-65", "no18-65"))) #RV-A vs RV-B
+oddsratio.fisher(AB_1965)
+
+AC_1965 <- matrix(c(225,97,58+11+169,56+13+54),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "C"), AgeGroup = c("18-65", "no18-65"))) #RV-A vs RV-C
+oddsratio.fisher(AC_1965)
+
+BC_1965 <- matrix(c(53,97,9+7+36,56+13+54),nrow = 2, ncol = 2, dimnames=list(RV= c("B", "C"), AgeGroup = c("18-65", "no18-65"))) #RV-B vs RV-C
+oddsratio.fisher(BC_1965)
+
+#pairwise comparison in >65 years old
+AB_more65 <-matrix(c(11,7,58+225+169,9+53+36),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "B"), AgeGroup = c("more65", "below65"))) #RV-A vs RV-B
+oddsratio.fisher(AB_more65)
+
+AC_more65 <- matrix(c(11,13,58+225+169,56+97+54),nrow = 2, ncol = 2, dimnames=list(RV= c("A", "C"), AgeGroup = c("more65", "below65"))) #RV-A vs RV-C
+oddsratio.fisher(AC_more65)
+
+BC_more65 <- matrix(c(7,13,9+53+36,56+97+54),nrow = 2, ncol = 2, dimnames=list(RV= c("B", "C"), AgeGroup = c("more65", "below65"))) #RV-B vs RV-C
+oddsratio.fisher(BC_more65)
+
+#**Symptoms versus RV species**
+df_clinica.SYM <- df_clinica[!is.na(df_clinica$Symptoms),]
+ggplot(df_clinica.SYM, aes(x=Symptoms, fill=RVSpecie)) + geom_bar(position = "dodge")
+#statistical test
+  df_clinica_sym.spe <- as.matrix(table(df_clinica.SYM$RVSpecie, df_clinica.SYM$Symptoms))  
+  g.test(df_clinica_sym.spe)
+
+#**Symptoms by age group per RV species**
+df_clinica.SYMA <- subset(df_clinica.SYM, subset = RVSpecie == "A")
+df_clinica.SYMB <- subset(df_clinica.SYM, subset = RVSpecie == "B")
+df_clinica.SYMC <- subset(df_clinica.SYM, subset = RVSpecie == "C")
+
+ggplot(df_clinica.SYMA, aes(x=AgeGroup, fill=Symptoms)) + geom_bar(position = "fill") + scale_x_discrete(limits = c("<5y", "5-18y", "19-65y", ">65y"))
+
+    df_clinica.SYMA_sym.age <- as.matrix(table(df_clinica.SYMA$Symptoms, df_clinica.SYMA$AgeGroup))  
+    g.test(df_clinica.SYMA_sym.age)
+
+ggplot(df_clinica.SYMB, aes(x=AgeGroup, fill=Symptoms)) + geom_bar(position = "fill") + scale_x_discrete(limits = c("<5y", "5-18y", "19-65y", ">65y"))
+
+    df_clinica.SYMB_sym.age <- as.matrix(table(df_clinica.SYMB$Symptoms, df_clinica.SYMB$AgeGroup))  
+    g.test(df_clinica.SYMB_sym.age)
+  
+ggplot(df_clinica.SYMC, aes(x=AgeGroup, fill=Symptoms)) + geom_bar(position = "fill") + scale_x_discrete(limits = c("<5y", "5-18y", "19-65y", ">65y"))
+
+    df_clinica.SYMC_sym.age <- as.matrix(table(df_clinica.SYMC$Symptoms, df_clinica.SYMC$AgeGroup))  
+    g.test(df_clinica.SYMC_sym.age)
+
+#**RV genotypes versus individuals' age**
+season_data_RVA <- subset(season_data_RV, subset = RVSpecie == "A")
+season_data_RVB <- subset(season_data_RV, subset = RVSpecie == "B")
+season_data_RVC <- subset(season_data_RV, subset = RVSpecie == "C")
+
+ggplot(season_data_RVA, aes(x=Genotype, y=Age)) + geom_violin(width=1) + geom_boxplot(width=0.1, color="black", alpha=0.2) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(season_data_RVB, aes(x=Genotype, y=Age)) + geom_violin(width=1) + geom_boxplot(width=0.1, color="black", alpha=0.2) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(season_data_RVC, aes(x=Genotype, y=Age)) + geom_violin(width=1) + geom_boxplot(width=0.1, color="black", alpha=0.2) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#**Ct value and genotypes**
+kruskal_test(season_data_RV, Genotype ~ RV_Ct_value)
+
+#Plot all genotypes versus Ct value
+ggboxplot(season_data_RV, x = "Genotype", y = "RV_Ct_value") + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+
+#Plot genotypes with more than 5 cases detected, versus Ct value
+season_data_RV_CT.5 <- season_data_RV %>% group_by(Genotype) %>% filter(n() > 5) %>% filter(RV_Ct_value!="NA")
+season_data_RV_CT.5$Genotype<- as.factor(season_data_RV_CT.5$Genotype)
+ggboxplot(season_data_RV_CT.5, x = "Genotype", y = "RV_Ct_value") + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+
+#**geographic location and individuals' age**
+season_data_RV %>% group_by(ZipCode) %>%
+get_summary_stats(Age, type="mean_sd") %>% print(n = 25)
+#plotting
+season_data_RV_clean <- season_data_RV[!is.na(season_data_RV$ZipCode),]
+ggplot(season_data_RV_clean, aes(x=ZipCode, y=Age)) + geom_boxplot(width=0.1, color="black", alpha=0.2) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#analyzing zip code with more than 5 cases reported:
+season_data_RV.5 <- season_data_RV %>%
+  group_by(ZipCode) %>%
+  filter(n() > 5) %>%
+  na.omit(season_data_RV.5$ZipCode)
+ggplot(season_data_RV.5, aes(x=ZipCode, y=Age)) +  geom_boxplot(width=0.1, color="black", alpha=0.2) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+
+
+
