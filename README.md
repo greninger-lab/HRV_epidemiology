@@ -1,4 +1,4 @@
-This repository contains the datasets and RMarkdown files to reproduce the results described in the article **"Genomic epidemiology and evolution of rhinovirus in western Washington State, 2021-22"**.
+This repository contains the datasets and RMarkdown files to reproduce the results described in the article **"Genomic Epidemiology and Evolution of Rhinovirus in Western Washington State, 2021-22"**.
 
 FUBAR-selection: includes the results of the selection pressure inferred with the method FUBAR. This method infers nonsynoymous (dN) and synonymous (dS) substitution rates on a per-site basis for the polyprotein coding alignment and the corresponding phylogeny. 
 
